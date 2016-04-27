@@ -1,0 +1,305 @@
+<?php
+
+/**
+ * @file
+ * Provides a license type for selling software licenses plus roles.
+ */
+
+/**
+ * Implements hook_ctools_plugin_directory().
+ */
+function commerce_license_software_role_ctools_plugin_directory($owner, $plugin_type) {
+  if ($owner == 'commerce_license') {
+    return "plugins/$plugin_type";
+  }
+}
+
+/**
+ * Implements hook_menu().
+ */
+function commerce_license_software_role_menu() {
+  $items['admin/commerce/config/license/software_role'] = array(
+    'title' => 'Software and Role',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('commerce_license_software_role_settings_form'),
+    'access arguments' => array('administer licenses'),
+    'type' => MENU_LOCAL_TASK,
+    'file' => 'includes/commerce_license_software_role.admin.inc',
+  );
+
+  return $items;
+}
+
+/**
+ * Return a list of product types used for software and role licensing.
+ *
+ * @return
+ *   An array of product type machine names.
+ */
+function commerce_license_software_role_product_types() {
+  $software_role_product_types = variable_get('commerce_license_software_role_product_types', array());
+  $software_role_product_types = array_filter($software_role_product_types);
+  // Return only those $software_role_product_types that are still licensable.
+  $license_product_types = commerce_license_product_types();
+  return array_intersect($software_role_product_types, $license_product_types);
+}
+
+/**
+ * Implements hook_commerce_license_types_list_alter().
+ *
+ * Removes the Role license type option from those product types that don't
+ * have it configured.
+ */
+function commerce_license_software_role_commerce_license_types_list_alter(&$types, $product) {
+  if (!empty($product) && !in_array($product->type, commerce_license_software_role_product_types())) {
+    unset($types['software_role']);
+  }
+}
+
+/**
+ * Implements hook_flush_caches().
+ *
+ * Ensures that products have the required commerce_license_role field.
+ */
+function commerce_license_software_role_flush_caches() {
+  $product_types = commerce_license_software_role_product_types();
+  commerce_license_software_role_configure_product_types($product_types);
+}
+
+/**
+ * Ensures that the provided product types have the required fields.
+ *
+ * Fields:
+ * - commerce_license_software_role: list(text) field pointing to a software_role.
+ *
+ * @param $types
+ *   An array of product type machine names.
+ */
+function commerce_license_software_role_configure_product_types($types) {
+  // Allow selection of role to be granted to user on purchase
+  $field = field_info_field('commerce_license_software_role');
+  if (!$field) {
+    $field = array(
+      'field_name' => 'commerce_license_software_role',
+      'cardinality' => 1,
+      'type' => 'list_text',
+      'locked' => TRUE,
+      'settings' => array(
+        'allowed_values_function' => 'commerce_license_software_role_allowed_values',
+      ),
+    );
+    field_create_field($field);
+  }
+
+  $existing = array();
+  if (!empty($field['bundles']['commerce_product'])) {
+    $existing = $field['bundles']['commerce_product'];
+  }
+  // Create instances on newly configured product types.
+  foreach (array_diff($types, $existing) as $new_bundle) {
+    $instance = array(
+      'field_name' => 'commerce_license_software_role',
+      'entity_type' => 'commerce_product',
+      'bundle' => $new_bundle,
+      'label' => t('Software Role'),
+      'required' => TRUE,
+      'widget' => array(
+        'type' => 'options_select',
+        'weight' => 9,
+      ),
+    );
+    field_create_instance($instance);
+
+    // Remove instances from product types that can no longer have licenses.
+    foreach (array_diff($existing, $types) as $removed_bundle) {
+      $instance = field_info_instance('commerce_product', 'commerce_license_software_role', $removed_bundle);
+      field_delete_instance($instance, TRUE);
+    }
+  }
+
+  // Size field. The meaning is determined by the software license module, which is
+  // number of domains or virtual machines or similar.
+  $field = field_info_field('clsr_size');
+  if (!$field) {
+    $field = array(
+      'field_name' => 'clsr_size',
+      'type' => 'number_integer',
+      'locked' => TRUE,
+    );
+    field_create_field($field);
+  }
+
+  $existing = array();
+  if (!empty($field['bundles']['commerce_product'])) {
+    $existing = $field['bundles']['commerce_product'];
+  }
+  // Create instances on newly configured product types.
+  foreach (array_diff($types, $existing) as $new_bundle) {
+    $instance = array(
+      'field_name' => 'clsr_size',
+      'entity_type' => 'commerce_product',
+      'bundle' => $new_bundle,
+      'label' => t('Software Size'),
+      'required' => TRUE,
+      'widget' => array(
+        'type' => 'clsr_size',
+      ),
+    );
+    field_create_instance($instance);
+  }
+
+  // Remove instances from product types that can no longer have software/role licenses.
+  foreach (array_diff($existing, $types) as $removed_bundle) {
+    $instance = field_info_instance('commerce_product', 'clsr_size', $removed_bundle);
+    field_delete_instance($instance, TRUE);
+  }
+
+  // Short name of the product being licensed. For internal use in Software License.
+  // "vm" for Virtualmin, "cm" for Cloudmin, etc.
+  $field = field_info_field('clsr_name');
+  if (!$field) {
+    $field = array(
+      'field_name' => 'clsr_name',
+      'type' => 'text',
+      'locked' => TRUE,
+    );
+    field_create_field($field);
+  }
+
+  $existing = array();
+  if (!empty($field['bundles']['commerce_product'])) {
+    $existing = $field['bundles']['commerce_product'];
+  }
+  // Create instances on newly configured product types.
+  foreach (array_diff($types, $existing) as $new_bundle) {
+    $instance = array(
+      'field_name' => 'clsr_name',
+      'entity_type' => 'commerce_product',
+      'bundle' => $new_bundle,
+      'label' => t('Software Product Name'),
+      'required' => TRUE,
+      'widget' => array(
+        'type' => 'clsr_name',
+      ),
+    );
+    field_create_instance($instance);
+  }
+
+  // Remove instances from product types that can no longer have software/role licenses.
+  foreach (array_diff($existing, $types) as $removed_bundle) {
+    $instance = field_info_instance('commerce_product', 'clsr_name', $removed_bundle);
+    field_delete_instance($instance, TRUE);
+  }
+ 
+  // Type field, for Software License. This is for additional specifiers, like "real"
+  // for Cloudmin for Physical Systems
+  $field = field_info_field('clsr_type');
+  if (!$field) {
+    $field = array(
+      'field_name' => 'clsr_type',
+      'type' => 'text',
+      'locked' => TRUE,
+    );
+    field_create_field($field);
+  }
+
+  $existing = array();
+  if (!empty($field['bundles']['commerce_product'])) {
+    $existing = $field['bundles']['commerce_product'];
+  }
+  // Create instances on newly configured product types.
+  foreach (array_diff($types, $existing) as $new_bundle) {
+    $instance = array(
+      'field_name' => 'clsr_type',
+      'entity_type' => 'commerce_product',
+      'bundle' => $new_bundle,
+      'label' => t('Software Type (Real?)'),
+      'widget' => array(
+        'type' => 'clsr_type',
+      ),
+    );
+    field_create_instance($instance);
+  }
+
+  // Remove instances from product types that can no longer have software/role licenses.
+  foreach (array_diff($existing, $types) as $removed_bundle) {
+    $instance = field_info_instance('commerce_product', 'clsr_type', $removed_bundle);
+    field_delete_instance($instance, TRUE);
+  }
+
+  // This license can issue serial numbers for billing to the customer?
+  // If allowed the Cloudmin license will be able to poll the license server for
+  // Virtualmin licenses that belong to the user and create Virtualmin installations
+  // for them.
+  $field = field_info_field('clsr_can_serials');
+  if (!$field) {
+    $field = array(
+      'field_name' => 'clsr_can_serials',
+      'type' => 'number_integer',
+      'locked' => TRUE,
+    );
+    field_create_field($field);
+  }
+
+  $existing = array();
+  if (!empty($field['bundles']['commerce_product'])) {
+    $existing = $field['bundles']['commerce_product'];
+  }
+  // Create instances on newly configured product types.
+  foreach (array_diff($types, $existing) as $new_bundle) {
+    $instance = array(
+      'field_name' => 'clsr_can_serials',
+      'entity_type' => 'commerce_product',
+      'bundle' => $new_bundle,
+      'label' => t('Software Can Issue Serial Numbers? 1=Yes'),
+      'widget' => array(
+        'type' => 'clsr_can_serials',
+      ),
+    );
+    field_create_instance($instance);
+  }
+
+  // Remove instances from product types that can no longer have software/role licenses.
+  foreach (array_diff($existing, $types) as $removed_bundle) {
+    $instance = field_info_instance('commerce_product', 'clsr_ican_serials', $removed_bundle);
+    field_delete_instance($instance, TRUE);
+  }
+}
+
+/**
+ * Allowed values callback for roles.
+ */
+function commerce_license_software_role_allowed_values($field, $instance, $entity_type, $entity) {
+  $roles = user_roles(TRUE);
+  unset($roles[DRUPAL_ANONYMOUS_RID]);
+  unset($roles[DRUPAL_AUTHENTICATED_RID]);
+  return $roles;
+}
+
+// Does a user have any other active software_role licenses?
+// XXX: Note this only works right if every software_role license assigns the same role.
+// Needs to be enhanced to check only those products that have the same role, but I
+// don't know how to do that.
+function commerce_license_software_role_exists ($role, $account = NULL) {
+  global $user;
+
+  if (!$account) {
+    $account = $user;
+  }
+
+  $results = &drupal_static(__FUNCTION__, array());
+  $uid = $account->uid;
+
+  if (empty($results[$uid])) {
+    $query = new EntityFieldQuery;
+    $query
+      ->entityCondition('entity_type', 'commerce_license')
+      ->propertyCondition('status', COMMERCE_LICENSE_ACTIVE)
+      ->propertyCondition('type', 'software_role')
+      ->propertyCondition('uid', $uid)
+      ->count();
+    $results[$uid] = $query->execute();
+  }
+
+  return $results[$uid];
+} 
