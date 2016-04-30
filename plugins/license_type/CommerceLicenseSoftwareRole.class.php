@@ -133,7 +133,7 @@ class CommerceLicenseSoftwareRole extends CommerceLicenseBase  {
 					watchdog('commerce_license_software_role', 'Trying to load software_license entity with serial_id: ' . print_r($this->wrapper->clsr_serial_id->value(), TRUE));
           $software_license = entity_load_single('software_license', $this->wrapper->clsr_serial_id->value());
 					watchdog('commerce_license_software_role', '$software_license contains: <pre>' . print_r($software_license, TRUE) . '</pre>');
-          $software_license_entity = $software_license->wrapper();
+          $software_license_entity = entity_metadata_wrapper('software_license', $software_license);
           // Update the license expiration
           $software_license->end_date = trim(date("Y-m-d H:i:s", $this->expires));
           $save_license = TRUE;
@@ -143,7 +143,7 @@ class CommerceLicenseSoftwareRole extends CommerceLicenseBase  {
         watchdog('comerce_license_software_role', '<pre>In inactive path with commerce_license data: ' . print_r($this, TRUE) . '</pre>');
         // Check for other active software_role licenses, so we don't expire if
         // user owns multiple products.
-      	if (empty(commerce_license_software_role_exists($uid))) {
+      	if (empty(commerce_license_software_role_exists($owner->uid))) {
           if (isset($owner->roles[$role])) {
             unset($owner->roles[$role]);
             $save_owner = TRUE;
@@ -152,10 +152,13 @@ class CommerceLicenseSoftwareRole extends CommerceLicenseBase  {
       }
       if ($this->status == COMMERCE_LICENSE_EXPIRED || $this->status == COMMERCE_LICENSE_REVOKED) {
         // Expire the license right now
-        if ($software_license) {
-          $software_license->end_date = date("Y-m-d H:i:s", commerce_license_get_time());
-          $save_license = TRUE;
-        }
+        // Load existing.
+        watchdog('commerce_license_software_role', 'Trying to load software_license entity with serial_idi for expiration update: ' . print_r($this->wrapper->clsr_serial_id->value(), TRUE));
+        $software_license = entity_load_single('software_license', $this->wrapper->clsr_serial_id->value());
+        watchdog('commerce_license_software_role', '$software_license contains: <pre>' . print_r($software_license, TRUE) . '</pre>');
+        $software_licensed_entity = entity_metadata_wrapper('software_license', $software_license);
+        $software_license->end_date = date("Y-m-d H:i:s", commerce_license_get_time());
+        $save_license = TRUE;
       }
       // If a role was added or removed, save the owner.
       if ($save_owner) {
